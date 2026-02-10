@@ -78,14 +78,12 @@ stages:
         
         echo ""
         echo "===== Installing Trivy ====="
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update -qq
-        sudo apt-get install trivy -y
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+        trivy --version
         
         echo ""
         echo "===== Running Security Vulnerability Scan ====="
-        trivy image --severity CRITICAL,HIGH --pkg-types os --exit-code 1 --format table scan-temp:latest
+        trivy image --scanners vuln --severity CRITICAL,HIGH --pkg-types os --exit-code 1 --format table scan-temp:latest
       displayName: 'Build and Scan APISIX Image'
       continueOnError: false
 

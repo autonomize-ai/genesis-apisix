@@ -46,13 +46,11 @@ jobs:
 
   - script: |
       echo "Installing Trivy for final verification..."
-      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-      echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-      sudo apt-get update
-      sudo apt-get install trivy -y
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+      trivy --version
       
       echo "Scanning built image..."
-      trivy image --severity CRITICAL,HIGH --pkg-types os --format json ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) > trivy-report.json
+      trivy image --scanners vuln --severity CRITICAL,HIGH --pkg-types os --format json ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) > trivy-report.json
       
       echo "Vulnerability Summary:"
       cat trivy-report.json | jq '{CRITICAL: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "CRITICAL")) | length), HIGH: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "HIGH")) | length)}'
