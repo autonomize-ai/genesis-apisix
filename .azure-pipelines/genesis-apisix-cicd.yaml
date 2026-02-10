@@ -67,13 +67,9 @@ stages:
     - checkout: self
       submodules: true
 
-    - task: Docker@2
+    - script: |
+        docker build -f $(DOCKERFILE_PATH) -t scan-temp:latest .
       displayName: 'Build APISIX Image for Scanning'
-      inputs:
-        command: 'build'
-        dockerfile: '$(DOCKERFILE_PATH)'
-        buildContext: '.'
-        tags: 'scan-temp'
 
     - script: |
         # Install Trivy
@@ -83,7 +79,7 @@ stages:
         sudo apt-get install trivy -y
         
         # Scan for vulnerabilities
-        trivy image --severity CRITICAL,HIGH --vuln-type os --exit-code 1 --format table scan-temp:latest
+        trivy image --severity CRITICAL,HIGH --pkg-types os --exit-code 1 --format table scan-temp:latest
       displayName: 'Run Trivy Vulnerability Scan'
       continueOnError: false
 

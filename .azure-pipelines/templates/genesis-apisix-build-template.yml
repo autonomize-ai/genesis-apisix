@@ -52,7 +52,7 @@ jobs:
       sudo apt-get install trivy -y
       
       echo "Scanning built image..."
-      trivy image --severity CRITICAL,HIGH --vuln-type os --format json ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) > trivy-report.json
+      trivy image --severity CRITICAL,HIGH --pkg-types os --format json ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) > trivy-report.json
       
       echo "Vulnerability Summary:"
       cat trivy-report.json | jq '{CRITICAL: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "CRITICAL")) | length), HIGH: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "HIGH")) | length)}'
