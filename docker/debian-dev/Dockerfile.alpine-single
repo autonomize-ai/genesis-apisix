@@ -28,8 +28,8 @@ FROM openresty/openresty:alpine-fat
 
 ARG ENABLE_PROXY=false
 ARG CODE_PATH
-ARG ENTRYPOINT_PATH=docker/debian-dev/docker-entrypoint.sh
-ARG INSTALL_BROTLI=docker/debian-dev/install-brotli.sh
+ARG ENTRYPOINT_PATH=./docker-entrypoint.sh
+ARG INSTALL_BROTLI=./install-brotli.sh
 
 ENV ENV_INST_LUADIR=/usr/local/apisix
 ENV ENV_OPENSSL_PREFIX=/usr/local/openresty/openssl3
@@ -45,11 +45,6 @@ RUN apk add --no-cache \
         musl-dev \
         linux-headers \
         curl \
-        wget \
-        ca-certificates \
-        jq \
-        bind-tools \
-        tzdata \
         unzip \
         gawk \
         pcre-dev \
@@ -78,8 +73,8 @@ RUN set -x \
 # RUN chmod +x /tmp/install-brotli.sh \
 #     && cd /tmp && ./install-brotli.sh && rm -f /tmp/install-brotli.sh
 
-# Clean up build dependencies to reduce image size (keep curl, wget, jq, bind-tools for runtime)
-RUN apk del make git gcc musl-dev linux-headers unzip gawk pcre-dev pcre2-dev
+# Clean up build dependencies to reduce image size
+RUN apk del make git gcc musl-dev linux-headers unzip gawk pcre-dev pcre2-dev curl
 
 # Set permissions
 RUN chgrp -R 0 /usr/local/apisix \
