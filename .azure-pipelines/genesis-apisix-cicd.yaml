@@ -68,19 +68,25 @@ stages:
       submodules: true
 
     - script: |
+        set -e
+        echo "===== Building APISIX Image for Security Scan ====="
         docker build -f $(DOCKERFILE_PATH) -t scan-temp:latest .
-      displayName: 'Build APISIX Image for Scanning'
-
-    - script: |
-        # Install Trivy
+        
+        echo ""
+        echo "===== Verifying Image Built Successfully ====="
+        docker images | grep scan-temp || (echo "ERROR: Image not found!" && exit 1)
+        
+        echo ""
+        echo "===== Installing Trivy ====="
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
         echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update
+        sudo apt-get update -qq
         sudo apt-get install trivy -y
         
-        # Scan for vulnerabilities
+        echo ""
+        echo "===== Running Security Vulnerability Scan ====="
         trivy image --severity CRITICAL,HIGH --pkg-types os --exit-code 1 --format table scan-temp:latest
-      displayName: 'Run Trivy Vulnerability Scan'
+      displayName: 'Build and Scan APISIX Image'
       continueOnError: false
 
 - stage: Build
