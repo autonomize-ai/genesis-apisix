@@ -39,18 +39,23 @@ jobs:
     condition: and(succeeded(), in(variables['Build.Reason'], 'Manual', 'IndividualCI', 'BatchedCI'))
 
   - script: |
+      set -e
+      IMAGE_FULL="$(ACR_ENDPOINT)/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
+      echo "Built image: $IMAGE_FULL"
       docker images
       echo "Verifying APISIX version..."
-      docker run --rm ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) apisix version
+      docker run --rm "$IMAGE_FULL" apisix version
     displayName: 'Verify APISIX Build'
 
   - script: |
+      set -e
+      IMAGE_FULL="$(ACR_ENDPOINT)/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
       echo "Installing Trivy for final verification..."
       curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
       trivy --version
       
-      echo "Scanning built image..."
-      trivy image --scanners vuln --severity CRITICAL,HIGH --pkg-types os --format json ${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber) > trivy-report.json
+      echo "Scanning built image: $IMAGE_FULL"
+      trivy image --scanners vuln --severity CRITICAL,HIGH --pkg-types os --format json "$IMAGE_FULL" > trivy-report.json
       
       echo "Vulnerability Summary:"
       cat trivy-report.json | jq '{CRITICAL: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "CRITICAL")) | length), HIGH: (.Results[0].Vulnerabilities // [] | map(select(.Severity == "HIGH")) | length)}'
@@ -75,7 +80,7 @@ jobs:
 
   - script: |
       echo "Genesis APISIX image built and pushed successfully"
-      echo "Image: ${{ parameters.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
+      echo "Image: $(ACR_ENDPOINT)/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
       echo "Components:"
       echo "  - Apache APISIX 3.15.0"
       echo "  - OpenResty 1.27.1.2"
@@ -89,4 +94,4 @@ jobs:
     inputs:
       PathtoPublish: 'trivy-report.json'
       ArtifactName: 'security-scan'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables['Agent.JobStatus'], 'Succeeded'))
