@@ -69,6 +69,7 @@ t/lib/dubbo*/**/target/
 !.markdownlint.yml
 !.licenserc.yaml
 !.ignore_words
+!.azure-pipelines/
 conf/apisix.yaml
 conf/apisix-*.yaml
 conf/config-*.yaml

@@ -1,0 +1,104 @@
+# Genesis APISIX CI/CD Pipeline
+# Apache APISIX API Gateway on Alpine Linux
+
+variables:
+  major: 3
+  minor: 15
+  patch: $[counter(variables['Build.SourceBranchName'], 0)]
+  globalPatch: $[counter('globalPatch', 0)]
+
+  # Container Registry Configuration
+  ACR_RESOURCE_GROUP: sprintRG
+  AZURE_CONTAINER_REGISTRY: sprintregistry
+  ACR_ENDPOINT: 'sprintregistry.azurecr.io'
+
+  # Genesis APISIX Configuration
+  IMAGE_NAME: 'genesis-apisix'
+  DOCKERFILE_PATH: 'docker/debian-dev/Dockerfile'
+  APISIX_VERSION: '3.15.0'
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+      - apisix/**
+      - conf/**
+      - docker/**
+      - Makefile
+      - apisix-master-0.rockspec
+      - .azure-pipelines/genesis-apisix-cicd.yaml
+      - .azure-pipelines/templates/*apisix*
+      - .azure-pipelines/templates/version.yml
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+      - apisix/**
+      - conf/**
+      - docker/**
+      - Makefile
+      - apisix-master-0.rockspec
+      - .azure-pipelines/genesis-apisix-cicd.yaml
+      - .azure-pipelines/templates/*apisix*
+
+stages:
+- stage: Version
+  displayName: 'Versioning'
+  condition: ne(variables['Build.Reason'], 'PullRequest')
+  jobs:
+  - template: templates/version.yml
+
+- stage: SecurityScan
+  displayName: 'Security Vulnerability Scan'
+  dependsOn: []
+  jobs:
+  - job: TrivyScan
+    displayName: 'Trivy Security Scan'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+      submodules: true
+
+    - task: Docker@2
+      displayName: 'Build APISIX Image for Scanning'
+      inputs:
+        command: 'build'
+        dockerfile: '$(DOCKERFILE_PATH)'
+        buildContext: '.'
+        tags: 'scan-temp'
+
+    - script: |
+        # Install Trivy
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy -y
+        
+        # Scan for vulnerabilities
+        trivy image --severity CRITICAL,HIGH --vuln-type os --exit-code 1 --format table scan-temp:latest
+      displayName: 'Run Trivy Vulnerability Scan'
+      continueOnError: false
+
+- stage: Build
+  displayName: 'Build Genesis APISIX Image'
+  dependsOn: 
+    - Version
+    - SecurityScan
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  jobs:
+  - template: templates/genesis-apisix-build-template.yml
+    parameters:
+      jobCondition: succeeded()
+      CONTAINER_NAME: $(IMAGE_NAME)
+      DOCKERFILE_PATH: $(DOCKERFILE_PATH)
+      AZURE_CONTAINER_REGISTRY: $(AZURE_CONTAINER_REGISTRY)
+      BUILD_ARGS: |
+        --build-arg APISIX_VERSION=$(APISIX_VERSION)
