@@ -83,8 +83,14 @@ RUN set -x \
 # Note: Keep 'pcre' (runtime library) but remove 'pcre-dev' (development headers) to save space
 RUN apk del make git gcc musl-dev linux-headers unzip gawk pcre-dev pcre2-dev
 
-# Set permissions
-RUN chgrp -R 0 /usr/local/apisix \
+# Create non-root user and set permissions
+RUN addgroup -g 1000 apisix \
+    && adduser -u 1000 -G apisix -s /bin/sh -D apisix \
+    && chown -R apisix:apisix /usr/local/apisix \
+    && chown -R apisix:apisix /usr/local/openresty \
+    && mkdir -p /var/run/openresty \
+    && chown -R apisix:apisix /var/run/openresty \
+    && chgrp -R 0 /usr/local/apisix \
     && chmod -R g=u /usr/local/apisix
 
 ENV PATH=$PATH:/usr/local/openresty/luajit/bin:/usr/local/openresty/nginx/sbin:/usr/local/openresty/bin
@@ -97,7 +103,11 @@ RUN ln -sf /dev/stdout /usr/local/apisix/logs/access.log \
 EXPOSE 9080 9443
 
 COPY ${ENTRYPOINT_PATH} /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh \
+    && chown apisix:apisix /docker-entrypoint.sh
+
+# Run as non-root user
+USER apisix
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
