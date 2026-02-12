@@ -16,107 +16,61 @@
 #
 
 # ---------------------------------------------------------------------------
-# CVE Hardening: Migrated from debian:bullseye-slim to Alpine-based OpenResty.
-# debian:bullseye-slim: 2 CRITICAL + 7 HIGH CVEs (will_not_fix/affected)
-# openresty/openresty:alpine-fat: 0 HIGH/CRITICAL CVEs
+# CVE Hardening: Based on official Apache APISIX image with security updates.
+# 
+# This Dockerfile:
+# 1. Uses official apache/apisix base (includes apisix-runtime with all required
+#    nginx modules: apisix-nginx-module, lua-resty-events, lua-var-nginx-module)
+# 2. Applies security updates to fix CVEs (apt-get upgrade)
+# 3. Optionally overlays custom APISIX code from the repository
 #
-# Note: Using single-stage alpine-fat (vs multi-stage alpine+alpine-fat)
-# to avoid Docker multi-stage parallelism issues with apk symbol resolution.
+# Previous Alpine-based approach failed because stock OpenResty lacks:
+# - apisix-nginx-module (APISIX-specific nginx directives)
+# - lua-resty-events compiled into nginx (not just as Lua files)
+# - lua-var-nginx-module, ngx_multi_upstream_module, etc.
 # ---------------------------------------------------------------------------
 
-FROM openresty/openresty:alpine-fat
+ARG APISIX_VERSION=3.14.1
+FROM apache/apisix:${APISIX_VERSION}-ubuntu
 
-ARG ENABLE_PROXY=false
 ARG CODE_PATH
 ARG ENTRYPOINT_PATH=docker/debian-dev/docker-entrypoint.sh
-ARG INSTALL_BROTLI=docker/debian-dev/install-brotli.sh
 
-ENV ENV_INST_LUADIR=/usr/local/apisix
-ENV ENV_OPENSSL_PREFIX=/usr/local/openresty/openssl3
-ENV ENV_LUAROCKS=/usr/local/openresty/luajit/bin/luarocks
+USER root
 
-# Install dependencies (build-time + runtime)
-RUN apk add --no-cache \
-        make \
-        git \
-        yaml-dev \
-        yaml \
-        gcc \
-        musl-dev \
-        linux-headers \
-        curl \
-        wget \
-        ca-certificates \
-        jq \
-        bind-tools \
-        tzdata \
-        unzip \
-        gawk \
-        pcre \
-        pcre-dev \
-        pcre2-dev \
-        openldap-dev \
-        bash
+# Apply security updates to fix CVEs
+# This upgrades all system packages to their latest patched versions
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY ${CODE_PATH} /apisix
-WORKDIR /apisix
+# If CODE_PATH is provided, overlay custom APISIX code
+# This allows building with custom modifications while keeping apisix-runtime
+COPY ${CODE_PATH}/apisix /usr/local/apisix/apisix
+COPY ${CODE_PATH}/conf /usr/local/apisix/conf
 
-# Install LuaRocks dependencies + APISIX
-RUN set -x \
-    && ls -al \
-    && mkdir -p ~/.luarocks \
-    && ${ENV_LUAROCKS} config variables.OPENSSL_LIBDIR ${ENV_OPENSSL_PREFIX}/lib \
-    && ${ENV_LUAROCKS} config variables.OPENSSL_INCDIR ${ENV_OPENSSL_PREFIX}/include \
-    && ${ENV_LUAROCKS} config variables.YAML_DIR /usr \
-    && ${ENV_LUAROCKS} install apisix-master-0.rockspec --tree deps --only-deps \
-    && mkdir -p ${ENV_INST_LUADIR} \
-    && cp -r deps ${ENV_INST_LUADIR} \
-    && ENV_NGINX_EXEC=/usr/local/openresty/bin/openresty make install \
-    && mkdir -p /usr/local/apisix/ui
+# Ensure correct ownership after overlay
+RUN chown -R apisix:apisix /usr/local/apisix
 
-# Install lua-resty-events (required by APISIX for inter-worker event propagation)
-# Stock OpenResty does not include this; APISIX runtime bundles it from Kong/lua-resty-events
-ARG LUA_RESTY_EVENTS_VERSION=0.3.1
-RUN cd /tmp \
-    && wget -q https://github.com/Kong/lua-resty-events/archive/refs/tags/${LUA_RESTY_EVENTS_VERSION}.tar.gz \
-    && tar -xzf ${LUA_RESTY_EVENTS_VERSION}.tar.gz \
-    && cp -r lua-resty-events-${LUA_RESTY_EVENTS_VERSION}/lualib/resty/events /usr/local/openresty/lualib/resty/events \
-    && rm -rf /tmp/${LUA_RESTY_EVENTS_VERSION}.tar.gz /tmp/lua-resty-events-${LUA_RESTY_EVENTS_VERSION}
+# Copy custom entrypoint if provided
+COPY ${ENTRYPOINT_PATH} /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh && \
+    chown apisix:apisix /docker-entrypoint.sh
 
-# Install brotli (skipped - apk symbol resolution issues; not critical for APISIX core)
-# COPY ${INSTALL_BROTLI} /tmp/install-brotli.sh
-# RUN chmod +x /tmp/install-brotli.sh \
-#     && cd /tmp && ./install-brotli.sh && rm -f /tmp/install-brotli.sh
+# Note: Brotli support is already included in the official apache/apisix image
+# The install-brotli.sh script is Alpine-specific and not needed for Ubuntu base
 
-# Clean up build dependencies to reduce image size (keep curl, wget, jq, bind-tools, pcre for runtime)
-# Note: Keep 'pcre' (runtime library) but remove 'pcre-dev' (development headers) to save space
-RUN apk del make git gcc musl-dev linux-headers unzip gawk pcre-dev pcre2-dev
+# Ensure log symlinks exist
+RUN ln -sf /dev/stdout /usr/local/apisix/logs/access.log && \
+    ln -sf /dev/stderr /usr/local/apisix/logs/error.log
 
-# Create non-root user and set permissions
-RUN addgroup -g 1000 apisix \
-    && adduser -u 1000 -G apisix -s /bin/sh -D apisix \
-    && chown -R apisix:apisix /usr/local/apisix \
-    && chown -R apisix:apisix /usr/local/openresty \
-    && mkdir -p /var/run/openresty \
-    && chown -R apisix:apisix /var/run/openresty \
-    && chgrp -R 0 /usr/local/apisix \
-    && chmod -R g=u /usr/local/apisix
-
-ENV PATH=$PATH:/usr/local/openresty/luajit/bin:/usr/local/openresty/nginx/sbin:/usr/local/openresty/bin
+# Run as non-root user (official image already has apisix user at uid 636)
+USER apisix
 
 WORKDIR /usr/local/apisix
 
-RUN ln -sf /dev/stdout /usr/local/apisix/logs/access.log \
-    && ln -sf /dev/stderr /usr/local/apisix/logs/error.log
-
 EXPOSE 9080 9443
-
-COPY ${ENTRYPOINT_PATH} /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh \
-    && chown apisix:apisix /docker-entrypoint.sh
-
-# Run as non-root user
-USER apisix
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
