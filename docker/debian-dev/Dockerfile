@@ -52,6 +52,7 @@ RUN apk add --no-cache \
         tzdata \
         unzip \
         gawk \
+        pcre \
         pcre-dev \
         pcre2-dev \
         openldap-dev \
@@ -78,7 +79,8 @@ RUN set -x \
 # RUN chmod +x /tmp/install-brotli.sh \
 #     && cd /tmp && ./install-brotli.sh && rm -f /tmp/install-brotli.sh
 
-# Clean up build dependencies to reduce image size (keep curl, wget, jq, bind-tools for runtime)
+# Clean up build dependencies to reduce image size (keep curl, wget, jq, bind-tools, pcre for runtime)
+# Note: Keep 'pcre' (runtime library) but remove 'pcre-dev' (development headers) to save space
 RUN apk del make git gcc musl-dev linux-headers unzip gawk pcre-dev pcre2-dev
 
 # Set permissions

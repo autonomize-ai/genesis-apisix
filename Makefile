@@ -507,6 +507,31 @@ build-on-debian-dev:
 		-f ./docker/debian-dev/Dockerfile .
 	@$(call func_echo_success_status, "$@ -> [ Done ]")
 
+### validate-docker-image : Validate Docker image for missing dependencies and security issues
+.PHONY: validate-docker-image
+validate-docker-image:
+	@$(call func_echo_status, "$@ -> [ Start ]")
+	@if [ -z "$(IMAGE_NAME)" ]; then \
+		echo "ERROR: IMAGE_NAME is required. Usage: make validate-docker-image IMAGE_NAME=your-image:tag"; \
+		exit 1; \
+	fi
+	./ci/validate-docker-image.sh $(IMAGE_NAME)
+	@$(call func_echo_success_status, "$@ -> [ Done ]")
+
+### test-local : Run full local test suite (build + validate + scan)
+.PHONY: test-local
+test-local:
+	@$(call func_echo_status, "$@ -> [ Start ]")
+	./test-locally.sh
+	@$(call func_echo_success_status, "$@ -> [ Done ]")
+
+### validate-debian-dev : Build and validate debian-dev image
+.PHONY: validate-debian-dev
+validate-debian-dev: build-on-debian-dev
+	@$(call func_echo_status, "$@ -> [ Start ]")
+	./ci/validate-docker-image.sh $(ENV_APISIX_IMAGE_TAG_NAME)-debian-dev
+	@$(call func_echo_success_status, "$@ -> [ Done ]")
+
 .PHONY: push-on-debian-dev
 push-on-debian-dev:
 	@$(call func_echo_status, "$@ -> [ Start ]")

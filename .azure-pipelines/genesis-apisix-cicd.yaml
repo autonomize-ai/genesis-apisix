@@ -70,11 +70,33 @@ stages:
     - script: |
         set -e
         echo "===== Building APISIX Image for Security Scan ====="
-        docker build -f $(DOCKERFILE_PATH) -t scan-temp:latest .
+        docker build \
+          --build-arg CODE_PATH=. \
+          --build-arg ENTRYPOINT_PATH=./docker/debian-dev/docker-entrypoint.sh \
+          --build-arg INSTALL_BROTLI=./docker/debian-dev/install-brotli.sh \
+          -f $(DOCKERFILE_PATH) \
+          -t scan-temp:latest .
         
         echo ""
         echo "===== Verifying Image Built Successfully ====="
         docker images | grep scan-temp || (echo "ERROR: Image not found!" && exit 1)
+        
+        echo ""
+        echo "===== Running Dependency Validation ====="
+        echo "This checks for missing libraries (like libpcre.so.1)"
+        chmod +x ./ci/validate-docker-image.sh
+        export VALIDATION_TIMEOUT=60
+        
+        if ./ci/validate-docker-image.sh scan-temp:latest; then
+          echo "✓ Dependency validation passed"
+        else
+          echo "ERROR: Image has missing dependencies or runtime issues"
+          echo "Common causes:"
+          echo "  - Missing PCRE library (libpcre.so.1)"
+          echo "  - Missing YAML library"
+          echo "  - Missing other runtime dependencies"
+          exit 1
+        fi
         
         echo ""
         echo "===== Installing Trivy ====="
@@ -82,9 +104,13 @@ stages:
         trivy --version
         
         echo ""
+        echo "===== Running Trivy Config Scan ====="
+        trivy config --severity CRITICAL,HIGH --exit-code 1 $(DOCKERFILE_PATH)
+        
+        echo ""
         echo "===== Running Security Vulnerability Scan ====="
         trivy image --scanners vuln --severity CRITICAL,HIGH --pkg-types os --exit-code 1 --format table scan-temp:latest
-      displayName: 'Build and Scan APISIX Image'
+      displayName: 'Build, Validate and Scan APISIX Image'
       continueOnError: false
 
 - stage: Build

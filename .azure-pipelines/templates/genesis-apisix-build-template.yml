@@ -50,6 +50,25 @@ jobs:
   - script: |
       set -e
       IMAGE_FULL="$(ACR_ENDPOINT)/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
+      
+      echo "===== Running Final Dependency Validation ====="
+      echo "Checking for missing runtime libraries (e.g., libpcre.so.1)"
+      
+      chmod +x ./ci/validate-docker-image.sh
+      export VALIDATION_TIMEOUT=60
+      
+      if ./ci/validate-docker-image.sh "$IMAGE_FULL"; then
+        echo "✓ Final validation passed - image is ready for deployment"
+      else
+        echo "ERROR: Built image failed validation"
+        echo "This image has missing dependencies and should not be deployed!"
+        exit 1
+      fi
+    displayName: 'Validate Built Image Dependencies'
+
+  - script: |
+      set -e
+      IMAGE_FULL="$(ACR_ENDPOINT)/${{ parameters.CONTAINER_NAME }}:$(Build.BuildNumber)"
       echo "Installing Trivy for final verification..."
       curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
       trivy --version
