@@ -74,6 +74,15 @@ RUN set -x \
     && ENV_NGINX_EXEC=/usr/local/openresty/bin/openresty make install \
     && mkdir -p /usr/local/apisix/ui
 
+# Install lua-resty-events (required by APISIX for inter-worker event propagation)
+# Stock OpenResty does not include this; APISIX runtime bundles it from Kong/lua-resty-events
+ARG LUA_RESTY_EVENTS_VERSION=0.3.1
+RUN cd /tmp \
+    && wget -q https://github.com/Kong/lua-resty-events/archive/refs/tags/${LUA_RESTY_EVENTS_VERSION}.tar.gz \
+    && tar -xzf ${LUA_RESTY_EVENTS_VERSION}.tar.gz \
+    && cp -r lua-resty-events-${LUA_RESTY_EVENTS_VERSION}/lualib/resty/events /usr/local/openresty/lualib/resty/events \
+    && rm -rf /tmp/${LUA_RESTY_EVENTS_VERSION}.tar.gz /tmp/lua-resty-events-${LUA_RESTY_EVENTS_VERSION}
+
 # Install brotli (skipped - apk symbol resolution issues; not critical for APISIX core)
 # COPY ${INSTALL_BROTLI} /tmp/install-brotli.sh
 # RUN chmod +x /tmp/install-brotli.sh \
